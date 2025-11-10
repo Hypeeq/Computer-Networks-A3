@@ -4,7 +4,7 @@ TCP Client (Assignment Part B — Timing & Latency Study)
 - Sends 100 sequential messages (seq = 1..100) to the TCP server.
 - Each message: {"seq": <int>, "send_ts": <float>, "msg": "Hello <seq>"}
 - Waits for ACK from server: {"seq": <int>, "server_recv_ts": <float>}
-- Computes RTT = (ack_ts - send_ts) * 1000  (per assignment specification)
+- Computes RTT locally using perf_counter(): (t1 - t0) * 1000  (ms)
 - Logs seq, send_ts, ack_ts, rtt_ms to CSV.
 - Prints handshake time, RTT stats, and total session duration.
 """
@@ -15,6 +15,7 @@ import json
 import socket
 import statistics
 import time
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -39,24 +40,27 @@ def main():
 
     sock.settimeout(args.recv_timeout)
 
-    # --- Send N messages and compute RTT per spec ---
+    # --- Send N messages and compute RTT ---
     results = []
     rtts = []
     t_session_start = time.perf_counter()
 
     for seq in range(1, args.n + 1):
-        send_ts = time.time()
+        send_ts = time.time()  # wall-clock timestamp for log
         msg = {"seq": seq, "send_ts": send_ts, "msg": f"Hello {seq}"}
         payload = json.dumps(msg) + "\n"
 
         try:
+            t0 = time.perf_counter()
             sock.sendall(payload.encode())
             data = sock.recv(1024)
+            t1 = time.perf_counter()
+
             ack = json.loads(data.decode().strip())
             ack_ts = ack.get("server_recv_ts", time.time())
 
-            # Assignment-specified RTT formula
-            rtt_ms = (ack_ts - send_ts) * 1000.0
+            # Correct RTT using client's monotonic timer, still multiplied by 1000
+            rtt_ms = (t1 - t0) * 1000.0
             rtts.append(rtt_ms)
             results.append((seq, send_ts, ack_ts, rtt_ms))
 
@@ -104,8 +108,10 @@ def main():
             "session_duration_ms": round(session_duration_ms, 3)
         }
 
+    # --- Print summary and CSV path ---
     print(json.dumps(summary))
     print(f"[TCP] CSV saved to {args.log_csv}")
+
 
 if __name__ == "__main__":
     main()
